@@ -1,66 +1,66 @@
 package com.deeni.qa
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-import com.deeni.qa.api.AskRequest
-import com.deeni.qa.api.AskResponse
-import com.deeni.qa.api.ApiService
-import com.deeni.qa.databinding.ActivityMainBinding
-import com.deeni.qa.util.Pref
-import okhttp3.OkHttpClient
-import okhttp3.logging.HttpLoggingInterceptor
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var api: ApiService
+    private val executor = Executors.newSingleThreadExecutor()
+    private val handler = Handler(Looper.getMainLooper())
+
+    private lateinit var languageSpinner: Spinner
+    private lateinit var questionInput: EditText
+    private lateinit var askButton: Button
+    private lateinit var progress: ProgressBar
+    private lateinit var answerText: TextView
+    private lateinit var sourceText: TextView
+    private lateinit var baseUrlInput: EditText
+    private lateinit var saveButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_main)
 
-        setupRetrofit()
-        setupUi()
-    }
+        languageSpinner = findViewById(R.id.languageSpinner)
+        questionInput = findViewById(R.id.questionInput)
+        askButton = findViewById(R.id.askButton)
+        progress = findViewById(R.id.progress)
+        answerText = findViewById(R.id.answerText)
+        sourceText = findViewById(R.id.sourceText)
+        baseUrlInput = findViewById(R.id.baseUrlInput)
+        saveButton = findViewById(R.id.saveBaseUrl)
 
-    private fun setupRetrofit() {
-        val baseUrl = Pref.getBaseUrl(this)
-        val log = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
-        val client = OkHttpClient.Builder().addInterceptor(log).build()
-        api = Retrofit.Builder()
-            .baseUrl(baseUrl)
-            .addConverterFactory(MoshiConverterFactory.create())
-            .client(client)
-            .build()
-            .create(ApiService::class.java)
-    }
+        val prefs = getSharedPreferences("deeniqa_prefs", MODE_PRIVATE)
+        val baseUrl = prefs.getString("base_url", "http://10.0.2.2:8000/") ?: "http://10.0.2.2:8000/"
+        baseUrlInput.setText(baseUrl)
 
-    private fun setupUi() {
-        val languages = listOf("urdu", "english")
+        val languages = arrayOf("urdu", "english")
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, languages)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.languageSpinner.adapter = adapter
+        languageSpinner.adapter = adapter
 
-        binding.saveBaseUrl.setOnClickListener {
-            val url = binding.baseUrlInput.text?.toString()?.trim()
-            if (!url.isNullOrEmpty()) {
-                Pref.setBaseUrl(this, url)
+        saveButton.setOnClickListener {
+            val url = baseUrlInput.text.toString().trim()
+            if (url.isNotEmpty()) {
+                prefs.edit().putString("base_url", url).apply()
                 Toast.makeText(this, "Base URL saved", Toast.LENGTH_SHORT).show()
-                setupRetrofit()
             }
         }
 
-        binding.askButton.setOnClickListener {
-            val lang = binding.languageSpinner.selectedItem?.toString() ?: "urdu"
-            val question = binding.questionInput.text?.toString()?.trim() ?: ""
-            if (question.isBlank()) {
+        askButton.setOnClickListener {
+            val lang = languageSpinner.selectedItem.toString()
+            val question = questionInput.text.toString().trim()
+            if (question.isEmpty()) {
                 Toast.makeText(this, "Enter a question", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -70,32 +70,60 @@ class MainActivity : AppCompatActivity() {
 
     private fun askQuestion(question: String, language: String) {
         setLoading(true)
-        binding.answerText.text = ""
-        binding.sourceText.text = ""
-        api.ask(AskRequest(question, language)).enqueue(object : Callback<AskResponse> {
-            override fun onResponse(call: Call<AskResponse>, response: Response<AskResponse>) {
-                setLoading(false)
-                if (response.isSuccessful) {
-                    val body = response.body()
-                    if (body != null) {
-                        binding.answerText.text = body.answer
-                        binding.sourceText.text = body.source?.let { "Source: $it" } ?: ""
-                    } else {
-                        binding.answerText.text = "No response"
+        answerText.text = ""
+        sourceText.text = ""
+
+        executor.execute {
+            try {
+                val prefs = getSharedPreferences("deeniqa_prefs", MODE_PRIVATE)
+                val baseUrl = prefs.getString("base_url", "http://10.0.2.2:8000/") ?: "http://10.0.2.2:8000/"
+                val url = URL(baseUrl + "ask")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+
+                val json = JSONObject()
+                json.put("question", question)
+                json.put("language", language)
+
+                val writer = OutputStreamWriter(conn.outputStream)
+                writer.write(json.toString())
+                writer.flush()
+                writer.close()
+
+                val responseCode = conn.responseCode
+                if (responseCode == 200) {
+                    val reader = BufferedReader(InputStreamReader(conn.inputStream))
+                    val response = reader.readText()
+                    reader.close()
+
+                    val jsonResponse = JSONObject(response)
+                    val answer = jsonResponse.getString("answer")
+                    val source = if (jsonResponse.has("source")) jsonResponse.getString("source") else null
+
+                    handler.post {
+                        setLoading(false)
+                        answerText.text = answer
+                        sourceText.text = if (source != null) "Source: $source" else ""
                     }
                 } else {
-                    binding.answerText.text = "Server error: ${response.code()}"
+                    handler.post {
+                        setLoading(false)
+                        answerText.text = "Server error: $responseCode"
+                    }
+                }
+            } catch (e: Exception) {
+                handler.post {
+                    setLoading(false)
+                    answerText.text = "Network error: ${e.message}"
                 }
             }
-            override fun onFailure(call: Call<AskResponse>, t: Throwable) {
-                setLoading(false)
-                binding.answerText.text = "Network error: ${t.localizedMessage}"
-            }
-        })
+        }
     }
 
     private fun setLoading(loading: Boolean) {
-        binding.progress.visibility = if (loading) View.VISIBLE else View.GONE
-        binding.askButton.isEnabled = !loading
+        progress.visibility = if (loading) View.VISIBLE else View.GONE
+        askButton.isEnabled = !loading
     }
 }
