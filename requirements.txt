@@ -1,0 +1,10 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sentence-transformers>=2.2.2
+faiss-cpu>=1.7.4
+PyMuPDF>=1.23.8
+transformers>=4.40.0
+torch>=2.1.0
+numpy>=1.26.0
+sentencepiece>=0.1.99
+langdetect>=1.0.9

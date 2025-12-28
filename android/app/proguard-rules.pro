@@ -1,0 +1,4 @@
+-keep class com.deeni.qa.** { *; }
+-keep class com.squareup.okhttp3.** { *; }
+-keep class retrofit2.** { *; }
+-keep class com.squareup.moshi.** { *; }

@@ -1,0 +1,23 @@
+# Git ignore file
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+.idea/
+.vscode/
+*.log
+
+# FAISS storage
+storage/
+
+# Android
+android/.gradle/
+android/local.properties
+android/build/
+android/app/build/
+*.iml
+.DS_Store
