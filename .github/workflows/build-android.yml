@@ -27,13 +27,19 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
 
+      - name: Download and setup Gradle 8.1.1
+        run: |
+          curl -sL https://services.gradle.org/distributions/gradle-8.1.1-bin.zip -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /tmp
+          echo "/tmp/gradle-8.1.1/bin" >> $GITHUB_PATH
+
       - name: Build debug APK
         working-directory: android
         env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
         run: |
-          ./gradlew --version
-          ./gradlew assembleDebug --stacktrace
+          gradle --version
+          gradle assembleDebug --stacktrace
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
