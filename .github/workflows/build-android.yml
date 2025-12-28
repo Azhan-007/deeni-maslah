@@ -27,20 +27,6 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses
 
-      - name: Install Gradle 8.1.1
-        run: |
-          curl -sL https://services.gradle.org/distributions/gradle-8.1.1-bin.zip -o gradle-8.1.1-bin.zip
-          unzip -q gradle-8.1.1-bin.zip
-          echo "GRADLE_HOME=$(pwd)/gradle-8.1.1" >> $GITHUB_ENV
-          echo "PATH=${GRADLE_HOME}/bin:${PATH}" >> $GITHUB_ENV
-
-      - name: Generate Gradle wrapper (if missing)
-        working-directory: android
-        run: |
-          if [ ! -f gradlew ]; then
-            ${GRADLE_HOME}/bin/gradle wrapper --gradle-version 8.1.1
-          fi
-
       - name: Build debug APK
         working-directory: android
         env:
